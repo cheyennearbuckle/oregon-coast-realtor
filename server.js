@@ -9,19 +9,28 @@ app.use(express.json());
 // Serve static files
 app.use(express.static("."));
 
-// Lead capture endpoint
+// Lead capture endpoint — all leads route to Cheyenne@pacificpropertiesteam.com
+const LEAD_EMAIL = "Cheyenne@pacificpropertiesteam.com";
+
 app.post("/api/lead", (req, res) => {
-  const { name, email, phone, message, type } = req.body;
-  console.log("New lead:", { name, email, phone, type, message });
-  // In production, connect to a CRM or email service
-  res.json({ success: true, message: "Thank you! Cheyenne will be in touch soon." });
+  const { name, email, phone, message, type, address, subject, _to } = req.body;
+  const lead = { name, email, phone, type: type || subject, message, address, sentTo: _to || LEAD_EMAIL, timestamp: new Date().toISOString() };
+  console.log("\n===== NEW LEAD =====");
+  console.log(JSON.stringify(lead, null, 2));
+  console.log("===================\n");
+  // TODO (production): Connect to email service (SendGrid, Mailgun, etc.) to forward to LEAD_EMAIL
+  // TODO (production): Connect to CRM (Follow Up Boss, kvCORE, etc.)
+  res.json({ success: true, message: "Thank you! Cheyenne will be in touch within one business day." });
 });
 
 // Newsletter signup
 app.post("/api/newsletter", (req, res) => {
-  const { email } = req.body;
-  console.log("Newsletter signup:", email);
-  res.json({ success: true, message: "You're on the list!" });
+  const { email, _to } = req.body;
+  console.log("\n===== NEWSLETTER SIGNUP =====");
+  console.log("Email:", email, "| Route to:", _to || LEAD_EMAIL);
+  console.log("=============================\n");
+  // TODO (production): Connect to email marketing service (Mailchimp, ConvertKit, etc.)
+  res.json({ success: true, message: "You're on the list! Watch your inbox for Oregon Coast market updates." });
 });
 
 // SPA fallback — serve index.html for any unmatched route
