@@ -1,16 +1,15 @@
 {
-  "name": "cheyenne-sells-oregon",
+  "name": "oregon-coast-realtor",
   "version": "1.0.0",
-  "main": "app.js",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
+    "express": "^4.21.0",
     "multer": "^2.1.1"
   }
 }
