@@ -1444,68 +1444,16 @@
         </div>
       </section>
 
-      <!-- Blog Grid -->
+      <!-- Blog Grid (dynamic) -->
       <section class="section" aria-labelledby="blog-posts-heading">
         <div class="container">
           <h2 id="blog-posts-heading" class="sr-only">Blog Posts</h2>
-          <div class="blog-grid">
-
-            <article class="blog-card">
-              <div class="card-img">
-                <img src="./assets/hero-areas.jpg" alt="Oregon Coast market trends chart and coastal property data for 2026" loading="lazy">
-              </div>
-              <div class="blog-card-body">
-                <p class="blog-card-meta">
-                  <time datetime="2026-02-15">February 15, 2026</time> &nbsp;·&nbsp; Market Trends
-                </p>
-                <h3>2026 Southern Oregon Coast Market Trends: What Buyers and Sellers Need to Know</h3>
-                <p>Coos Bay's 22.9% year-over-year price surge is making headlines — but the story behind those numbers is more nuanced. We break down what's driving price growth, what it means for buyers and sellers in each community, and where the market is headed in 2026.</p>
-                <p style="margin-top:var(--space-4);color:var(--color-primary);font-size:var(--text-sm);font-weight:600;">Contact Cheyenne for the full market report →</p>
-              </div>
-            </article>
-
-            <article class="blog-card">
-              <div class="card-img">
-                <img src="./assets/hero-home.jpg" alt="First-time homebuyer couple reviewing documents in front of a Southern Oregon Coast home" loading="lazy">
-              </div>
-              <div class="blog-card-body">
-                <p class="blog-card-meta">
-                  <time datetime="2026-01-22">January 22, 2026</time> &nbsp;·&nbsp; Buyer Guides
-                </p>
-                <h3>First-Time Homebuyer Guide: Oregon Coast Edition</h3>
-                <p>Buying your first home anywhere is exciting and overwhelming. Buying your first home on the Oregon Coast adds a whole additional layer of coastal-specific considerations that most first-timers aren't prepared for. This comprehensive guide walks you through everything — from pre-approval to coastal inspections to closing day.</p>
-                <p style="margin-top:var(--space-4);color:var(--color-primary);font-size:var(--text-sm);font-weight:600;">Contact Cheyenne to discuss your first home →</p>
-              </div>
-            </article>
-
-            <article class="blog-card">
-              <div class="card-img">
-                <img src="./assets/hero-contact.jpg" alt="Coastal property checklist items with Oregon shoreline in the background" loading="lazy">
-              </div>
-              <div class="blog-card-body">
-                <p class="blog-card-meta">
-                  <time datetime="2025-12-10">December 10, 2025</time> &nbsp;·&nbsp; Buyer Tips
-                </p>
-                <h3>5 Things to Know Before Buying Coastal Property in Oregon</h3>
-                <p>From flood zones to the Oregon Beach Bill to the unique maintenance demands of salt-air living, coastal real estate comes with considerations that most buyers from inland markets haven't encountered. Here are the five things every prospective coastal buyer needs to understand before signing anything.</p>
-                <p style="margin-top:var(--space-4);color:var(--color-primary);font-size:var(--text-sm);font-weight:600;">Ask Cheyenne about coastal property specifics →</p>
-              </div>
-            </article>
-
-            <article class="blog-card">
-              <div class="card-img">
-                <img src="./assets/hero-about.jpg" alt="Coos Bay harbor and downtown waterfront, a hidden gem on the Oregon Coast" loading="lazy">
-              </div>
-              <div class="blog-card-body">
-                <p class="blog-card-meta">
-                  <time datetime="2025-11-05">November 5, 2025</time> &nbsp;·&nbsp; Local Living
-                </p>
-                <h3>Why Coos Bay is Oregon's Best-Kept Real Estate Secret</h3>
-                <p>While the world debates Bend and Portland, savvy buyers are quietly moving to Coos Bay — Oregon's largest coastal city, where the harbor is alive, the arts scene is thriving, and you can still buy a home for under $400K with ocean views. Here's what makes Coos Bay the discovery of the decade.</p>
-                <p style="margin-top:var(--space-4);color:var(--color-primary);font-size:var(--text-sm);font-weight:600;">Explore Coos Bay properties with Cheyenne →</p>
-              </div>
-            </article>
-
+          <div id="blog-grid" class="blog-grid">
+            <!-- Posts are loaded dynamically by app.js -->
+            <div class="blog-loading" id="blog-loading" aria-live="polite">
+              <div class="blog-loading-spinner"></div>
+              <p>Loading posts&hellip;</p>
+            </div>
           </div>
 
           <div style="text-align:center;margin-top:var(--space-10);">
@@ -1516,6 +1464,228 @@
       </section>
 
     </div><!-- /#blog -->
+
+
+    <!-- ══════════════════════════════════
+         PAGE: ADMIN (#admin) — not in main nav
+         ══════════════════════════════════ -->
+    <div id="admin" class="page">
+      <div class="admin-wrap">
+
+        <!-- Auth Gate -->
+        <div id="admin-auth" class="admin-auth">
+          <div class="admin-auth-card">
+            <div class="admin-auth-icon" aria-hidden="true">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="3" y="11" width="18" height="11" rx="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+            </div>
+            <h1>Admin Access</h1>
+            <p>Enter your admin password to manage blog posts.</p>
+            <div class="admin-auth-form">
+              <div class="form-group">
+                <label for="admin-password">Password</label>
+                <input type="password" id="admin-password" placeholder="Enter admin password" autocomplete="current-password">
+              </div>
+              <button id="admin-login-btn" class="btn btn-primary" style="width:100%;justify-content:center;">
+                Sign In
+              </button>
+              <p id="admin-auth-error" class="admin-auth-error" style="display:none;">Incorrect password. Please try again.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Admin Dashboard (hidden until auth) -->
+        <div id="admin-dashboard" class="admin-dashboard" style="display:none;">
+
+          <!-- Admin Header -->
+          <div class="admin-header">
+            <div class="admin-header-inner">
+              <div>
+                <h1 class="admin-title">Blog Manager</h1>
+                <p class="admin-subtitle">Create and manage your posts</p>
+              </div>
+              <div class="admin-header-actions">
+                <button id="admin-new-post-btn" class="btn btn-primary">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+                  New Post
+                </button>
+                <button id="admin-logout-btn" class="btn btn-ghost">
+                  Sign Out
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Post List -->
+          <div id="admin-post-list-view">
+            <div class="admin-section">
+              <div class="admin-section-header">
+                <h2>All Posts</h2>
+                <span id="admin-post-count" class="admin-badge">0 posts</span>
+              </div>
+              <div id="admin-posts-table-wrap">
+                <table class="admin-table" id="admin-posts-table">
+                  <thead>
+                    <tr>
+                      <th>Title</th>
+                      <th>Category</th>
+                      <th>Status</th>
+                      <th>Date</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-posts-tbody">
+                    <tr id="admin-posts-empty">
+                      <td colspan="5" class="admin-table-empty">No posts yet. Create your first post!</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Post Editor -->
+          <div id="admin-editor-view" style="display:none;">
+            <div class="admin-section">
+              <div class="admin-section-header">
+                <h2 id="admin-editor-title">New Post</h2>
+                <button id="admin-cancel-btn" class="btn btn-ghost">Cancel</button>
+              </div>
+
+              <form id="admin-post-form" class="admin-form" novalidate>
+                <input type="hidden" id="admin-post-id" value="">
+
+                <div class="admin-form-grid">
+
+                  <!-- Left column -->
+                  <div class="admin-form-main">
+
+                    <div class="form-group">
+                      <label for="admin-post-title">Title <span class="required">*</span></label>
+                      <input type="text" id="admin-post-title" placeholder="Post title" required>
+                    </div>
+
+                    <div class="form-group">
+                      <label for="admin-post-excerpt">Excerpt</label>
+                      <textarea id="admin-post-excerpt" rows="3" placeholder="Short description shown on blog cards"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                      <label for="admin-post-content">Content</label>
+                      <textarea id="admin-post-content" rows="16" placeholder="Full post content — you can paste formatted HTML or plain text"></textarea>
+                    </div>
+
+                    <!-- Listing Details (only when category = listing) -->
+                    <div id="admin-listing-section" class="admin-listing-section" style="display:none;">
+                      <div class="admin-listing-header">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                        Listing Details
+                      </div>
+                      <div class="form-grid">
+                        <div class="form-group">
+                          <label for="admin-listing-price">Price</label>
+                          <input type="text" id="admin-listing-price" placeholder="$425,000">
+                        </div>
+                        <div class="form-group">
+                          <label for="admin-listing-status">Listing Status</label>
+                          <select id="admin-listing-status">
+                            <option value="Active">Active</option>
+                            <option value="Pending">Pending</option>
+                            <option value="Sold">Sold</option>
+                          </select>
+                        </div>
+                        <div class="form-group full-width">
+                          <label for="admin-listing-address">Address</label>
+                          <input type="text" id="admin-listing-address" placeholder="123 Ocean View Dr, Coos Bay, OR">
+                        </div>
+                        <div class="form-group">
+                          <label for="admin-listing-beds">Beds</label>
+                          <input type="number" id="admin-listing-beds" placeholder="3" min="0">
+                        </div>
+                        <div class="form-group">
+                          <label for="admin-listing-baths">Baths</label>
+                          <input type="number" id="admin-listing-baths" placeholder="2" min="0" step="0.5">
+                        </div>
+                        <div class="form-group">
+                          <label for="admin-listing-sqft">Sq Ft</label>
+                          <input type="text" id="admin-listing-sqft" placeholder="1,850">
+                        </div>
+                        <div class="form-group">
+                          <label for="admin-listing-mls">MLS #</label>
+                          <input type="text" id="admin-listing-mls" placeholder="26-12345">
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+
+                  <!-- Right column -->
+                  <div class="admin-form-sidebar">
+
+                    <div class="admin-sidebar-card">
+                      <h3 class="admin-sidebar-title">Publish</h3>
+                      <div class="form-group">
+                        <label for="admin-post-status">Status</label>
+                        <select id="admin-post-status">
+                          <option value="draft">Draft</option>
+                          <option value="published">Published</option>
+                        </select>
+                      </div>
+                      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:var(--space-3);" id="admin-save-btn">
+                        Save Post
+                      </button>
+                      <p id="admin-save-error" class="admin-form-error" style="display:none;"></p>
+                      <p id="admin-save-success" class="admin-form-success" style="display:none;"></p>
+                    </div>
+
+                    <div class="admin-sidebar-card">
+                      <h3 class="admin-sidebar-title">Category</h3>
+                      <div class="form-group">
+                        <label for="admin-post-category" class="sr-only">Category</label>
+                        <select id="admin-post-category">
+                          <option value="market-update">Market Update</option>
+                          <option value="listing">New Listing</option>
+                          <option value="buyer-tips">Buyer Tips</option>
+                          <option value="seller-tips">Seller Tips</option>
+                          <option value="community">Community Spotlight</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div class="admin-sidebar-card">
+                      <h3 class="admin-sidebar-title">Featured Image</h3>
+                      <div
+                        id="admin-upload-zone"
+                        class="admin-upload-zone"
+                        role="button"
+                        tabindex="0"
+                        aria-label="Click or drag to upload featured image"
+                      >
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        <p>Drag &amp; drop or <span class="upload-link">browse</span></p>
+                        <p class="upload-hint">JPG, PNG, or WebP &mdash; max 5MB</p>
+                        <input type="file" id="admin-image-input" accept="image/jpeg,image/png,image/webp" style="display:none;" aria-hidden="true">
+                      </div>
+                      <div id="admin-image-preview" class="admin-image-preview" style="display:none;">
+                        <img id="admin-preview-img" src="" alt="Featured image preview">
+                        <button type="button" id="admin-remove-image-btn" class="admin-remove-img" aria-label="Remove image">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                        </button>
+                      </div>
+                      <input type="hidden" id="admin-post-image" value="">
+                    </div>
+
+                  </div><!-- /.admin-form-sidebar -->
+                </div><!-- /.admin-form-grid -->
+              </form>
+            </div>
+          </div><!-- /#admin-editor-view -->
+
+        </div><!-- /#admin-dashboard -->
+      </div><!-- /.admin-wrap -->
+    </div><!-- /#admin -->
 
 
     <!-- ══════════════════════════════════
@@ -1750,6 +1920,27 @@
     </div>
 
   </footer>
+
+  <!-- Blog Post Modal -->
+  <div id="blog-modal" class="blog-modal" role="dialog" aria-modal="true" aria-labelledby="blog-modal-title" style="display:none;">
+    <div class="blog-modal-overlay" id="blog-modal-overlay"></div>
+    <div class="blog-modal-panel">
+      <button class="blog-modal-close" id="blog-modal-close" aria-label="Close post">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+      <div class="blog-modal-content">
+        <div id="blog-modal-img-wrap" class="blog-modal-img-wrap" style="display:none;">
+          <img id="blog-modal-img" src="" alt="">
+        </div>
+        <div class="blog-modal-body">
+          <p class="blog-card-meta" id="blog-modal-meta"></p>
+          <h2 id="blog-modal-title" class="blog-modal-title"></h2>
+          <div id="blog-modal-listing-bar" class="blog-modal-listing-bar" style="display:none;"></div>
+          <div id="blog-modal-text" class="blog-modal-text"></div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- App JS -->
   <script src="./app.js"></script>
