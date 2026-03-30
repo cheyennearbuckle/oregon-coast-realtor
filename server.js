@@ -45,7 +45,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
 // ── Serve static files ──
-app.use(express.static("."));
+app.use(express.static(__dirname));
+app.use("/assets", express.static(path.join(__dirname, "assets")));
 app.use("/assets/uploads", express.static(UPLOADS_DIR));
 
 // ── Lead capture endpoint ──
