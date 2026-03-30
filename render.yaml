@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: oregoncoastrealtor
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    region: oregon
+    envVars:
+      - key: NODE_ENV
+        value: production
