@@ -283,17 +283,67 @@
       listingBar.style.display = 'none';
     }
 
-    // Render content — if it looks like HTML, inject; otherwise wrap in paragraphs
-    if (post.content) {
-      const isHtml = /<[a-z][\s\S]*>/i.test(post.content);
-      if (isHtml) {
-        text.innerHTML = post.content;
-      } else {
-        text.innerHTML = post.content
-          .split(/\n\n+/)
-          .map(p => `<p>${escHtml(p.trim())}</p>`)
-          .join('');
+    // Render content — markdown to HTML
+    function renderMarkdown(md) {
+      if (!md) return '';
+      // If already HTML, return as-is
+      if (/<[a-z][\s\S]*>/i.test(md)) return md;
+      const escLine = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      const inlineFormat = s => s
+        // Links: [text](url)
+        .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, (_,t,u) =>
+          `<a href="${u}" target="_blank" rel="noopener noreferrer">${escLine(t)}</a>`)
+        // Bold
+        .replace(/\*\*([^*]+)\*\*/g, (_,t) => `<strong>${escLine(t)}</strong>`)
+        // Italic
+        .replace(/\*([^*]+)\*/g, (_,t) => `<em>${escLine(t)}</em>`);
+
+      const lines = md.split('\n');
+      let html = '';
+      let inList = false;
+      for (let i = 0; i < lines.length; i++) {
+        const raw = lines[i];
+        const line = raw.trimEnd();
+        // H2
+        if (/^## (.+)/.test(line)) {
+          if (inList) { html += '</ul>'; inList = false; }
+          html += `<h2>${inlineFormat(escLine(line.replace(/^## /,'')))}</h2>`;
+        // H3
+        } else if (/^### (.+)/.test(line)) {
+          if (inList) { html += '</ul>'; inList = false; }
+          html += `<h3>${inlineFormat(escLine(line.replace(/^### /,'')))}</h3>`;
+        // List item
+        } else if (/^[-*] (.+)/.test(line)) {
+          if (!inList) { html += '<ul>'; inList = true; }
+          html += `<li>${inlineFormat(escLine(line.replace(/^[-*] /,'')))}</li>`;
+        // Blank line
+        } else if (line.trim() === '') {
+          if (inList) { html += '</ul>'; inList = false; }
+        // Normal paragraph line
+        } else {
+          if (inList) { html += '</ul>'; inList = false; }
+          // Check if next line is blank or heading (paragraph break)
+          const next = lines[i+1];
+          const isEnd = !next || next.trim() === '' || /^#{1,3} /.test(next) || /^[-*] /.test(next);
+          if (isEnd) {
+            html += `<p>${inlineFormat(escLine(line))}</p>`;
+          } else {
+            // Accumulate paragraph lines
+            let para = line;
+            while (i+1 < lines.length && lines[i+1].trim() !== '' && !/^#{1,3} /.test(lines[i+1]) && !/^[-*] /.test(lines[i+1])) {
+              i++;
+              para += ' ' + lines[i].trimEnd();
+            }
+            html += `<p>${inlineFormat(escLine(para))}</p>`;
+          }
+        }
       }
+      if (inList) html += '</ul>';
+      return html;
+    }
+
+    if (post.content) {
+      text.innerHTML = renderMarkdown(post.content);
     } else if (post.excerpt) {
       text.innerHTML = `<p>${escHtml(post.excerpt)}</p>`;
     } else {
