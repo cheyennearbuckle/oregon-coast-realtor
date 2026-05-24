@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://oregoncoastrealtors.com/sitemap.xml
+
+# Block admin panel from indexing
+Disallow: /#admin
