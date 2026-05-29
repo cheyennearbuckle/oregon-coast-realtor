@@ -193,6 +193,56 @@ app.post("/api/upload", requireAuth, upload.single("image"), (req, res) => {
   res.json({ url });
 });
 
+// ── Blog post SSR — inject canonical + OG meta per post for Google ──
+app.get("/blog/:slug", (req, res) => {
+  const posts = readPosts();
+  const post = posts.find(p => p.slug === req.params.slug && p.status === "published");
+  const indexHtml = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+
+  if (!post) {
+    // Slug not found — return 404 so Google stops indexing phantom URLs
+    return res.status(404).send(indexHtml.replace(
+      '<link rel="canonical" href="https://oregoncoastrealtors.com/">',
+      '<link rel="canonical" href="https://oregoncoastrealtors.com/">\n  <meta name="robots" content="noindex, follow">'
+    ));
+  }
+
+  const url  = `https://oregoncoastrealtors.com/blog/${post.slug}`;
+  const title = `${post.title} | Oregon Coast Realtor – Cheyenne Arbuckle`;
+  const desc  = post.excerpt || "Oregon Coast real estate insights from Cheyenne Arbuckle, Pacific Properties.";
+  const img   = post.image ? `https://oregoncoastrealtors.com${post.image}` : "https://oregoncoastrealtors.com/assets/og-default.jpg";
+
+  const injected = indexHtml
+    .replace(
+      '<link rel="canonical" href="https://oregoncoastrealtors.com/">',
+      `<link rel="canonical" href="${url}">`
+    )
+    .replace(
+      /<title>.*?<\/title>/,
+      `<title>${title}</title>`
+    )
+    .replace(
+      /<meta name="description" content=".*?">/,
+      `<meta name="description" content="${desc}">`
+    )
+    // Open Graph
+    .replace(
+      '</head>',
+      `  <meta property="og:type" content="article">\n` +
+      `  <meta property="og:title" content="${title}">\n` +
+      `  <meta property="og:description" content="${desc}">\n` +
+      `  <meta property="og:url" content="${url}">\n` +
+      `  <meta property="og:image" content="${img}">\n` +
+      `  <meta name="twitter:card" content="summary_large_image">\n` +
+      `  <meta name="twitter:title" content="${title}">\n` +
+      `  <meta name="twitter:description" content="${desc}">\n` +
+      `</head>`
+    );
+
+  res.setHeader("Content-Type", "text/html");
+  res.send(injected);
+});
+
 // ── SPA fallback — serve index.html for any unmatched route ──
 app.use((req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
