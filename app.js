@@ -255,8 +255,20 @@
     }
   });
 
-  function openBlogModal(post) {
+  function openBlogModal(post, opts) {
     if (!blogModal) return;
+    opts = opts || {};
+
+    // ── Update the browser URL to the post's clean slug (e.g. /blog/my-post) ──
+    // so visitors see and can copy a shareable link instead of just #blog.
+    if (!opts.skipHistory && post.slug) {
+      try {
+        history.pushState({ postId: post.id }, '', '/blog/' + post.slug);
+      } catch (e) { /* ignore if unsupported */ }
+    }
+    if (post.title) {
+      document.title = post.title + ' | Oregon Coast Realtor \u2013 Cheyenne Arbuckle';
+    }
 
     const imgWrap = document.getElementById('blog-modal-img-wrap');
     const img = document.getElementById('blog-modal-img');
@@ -355,11 +367,55 @@
     blogModalClose.focus();
   }
 
-  function closeBlogModal() {
+  function closeBlogModal(opts) {
     if (!blogModal) return;
+    opts = opts || {};
     blogModal.style.display = 'none';
     document.body.style.overflow = '';
+    // Revert URL back to the blog listing and restore the default title.
+    if (!opts.skipHistory) {
+      try {
+        history.pushState({}, '', '/#blog');
+      } catch (e) { /* ignore */ }
+      document.title = 'Oregon Coast Realtor \u2013 Cheyenne Arbuckle | Southern Oregon Coast Real Estate';
+    }
   }
+
+  // ── Open a post directly from a /blog/{slug} URL (direct visit, shared link,
+  //    Google result, or browser back/forward) ──
+  async function openPostBySlug(slug, opts) {
+    if (!slug) return;
+    // Make sure the blog page is visible and posts are loaded.
+    const pages2 = document.querySelectorAll('.page');
+    pages2.forEach(p => { p.style.display = p.id === 'blog' ? '' : 'none'; });
+    if (blogPostsCache === null) {
+      try {
+        const res = await fetch('/api/posts');
+        blogPostsCache = await res.json();
+        renderBlogPosts(blogPostsCache);
+      } catch (e) { return; }
+    } else {
+      renderBlogPosts(blogPostsCache);
+    }
+    const post = (blogPostsCache || []).find(p => p.slug === slug);
+    if (post) openBlogModal(post, opts);
+  }
+
+  // ── Handle browser back/forward between a post and the listing ──
+  window.addEventListener('popstate', () => {
+    const m = location.pathname.match(/^\/blog\/([^\/?#]+)/);
+    if (m) {
+      openPostBySlug(decodeURIComponent(m[1]), { skipHistory: true });
+    } else if (blogModal && blogModal.style.display !== 'none') {
+      closeBlogModal({ skipHistory: true });
+    }
+  });
+
+  // ── On initial load, if the URL is /blog/{slug}, open that post automatically ──
+  (function handleInitialBlogPath() {
+    const m = location.pathname.match(/^\/blog\/([^\/?#]+)/);
+    if (m) openPostBySlug(decodeURIComponent(m[1]), { skipHistory: true });
+  })();
 
   function buildModalListingBar(listing) {
     const items = [];

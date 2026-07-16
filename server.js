@@ -193,6 +193,27 @@ app.post("/api/upload", requireAuth, upload.single("image"), (req, res) => {
   res.json({ url });
 });
 
+// ── Short alias redirects — friendly links (e.g. /blog2195Garfield or /2195Garfield) ──
+// Map a short, memorable alias to a post's full canonical slug. 301-redirect so
+// there's still ONE canonical URL for SEO, but you can hand out the short link.
+app.get("/:alias", (req, res, next) => {
+  const raw = req.params.alias;
+  if (!raw || raw.includes(".")) return next(); // skip files like robots.txt
+  // Accept both "/2195garfield" and "/blog2195garfield" (optional "blog" prefix)
+  const alias = raw.toLowerCase();
+  const aliasNoPrefix = alias.replace(/^blog/, "");
+  const posts = readPosts();
+  const post = posts.find(p => {
+    if (p.status !== "published" || !p.alias) return false;
+    const a = p.alias.toLowerCase();
+    return a === alias || a === aliasNoPrefix;
+  });
+  if (post) {
+    return res.redirect(301, `/blog/${post.slug}`);
+  }
+  return next();
+});
+
 // ── Blog post SSR — inject canonical + OG meta per post for Google ──
 app.get("/blog/:slug", (req, res) => {
   const posts = readPosts();
