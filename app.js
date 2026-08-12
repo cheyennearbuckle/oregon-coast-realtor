@@ -55,7 +55,14 @@
   const navLinks = document.querySelectorAll('.main-nav a[href^="#"]');
 
   function navigate() {
-    const hash = location.hash || '#home';
+    // A direct visit to the plain /blog path (no #hash) — e.g. from Google search
+    // results, the sitemap, or a shared link — should show the blog listing just
+    // like clicking the "Blog" nav link would.
+    let hash = location.hash;
+    if (!hash && (location.pathname === '/blog' || location.pathname === '/blog/')) {
+      hash = '#blog';
+    }
+    hash = hash || '#home';
     const pageId = hash.slice(1);
     pages.forEach(p => {
       p.style.display = p.id === pageId ? '' : 'none';
