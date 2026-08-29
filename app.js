@@ -309,13 +309,21 @@
       if (/<[a-z][\s\S]*>/i.test(md)) return md;
       const escLine = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
       const inlineFormat = s => s
-        // Links: [text](url)
-        .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, (_,t,u) =>
-          `<a href="${u}" target="_blank" rel="noopener noreferrer">${escLine(t)}</a>`)
+        // Links: [text](url) — absolute http(s) links open in a new tab;
+        // relative links (e.g. /#contact) stay in the same tab. `t`/`u` are
+        // already-escaped by the outer escLine() call above, so they must NOT
+        // be escaped again here — doing so previously double-escaped the
+        // generated <a> tag whenever a link was wrapped in bold
+        // (**[text](url)**), which showed the raw tag markup as visible text
+        // on published posts instead of a working link.
+        .replace(/\[([^\]]+)\]\(((?:https?:\/\/|\/)[^)]+)\)/g, (_,t,u) => {
+          const isExternal = /^https?:\/\//.test(u);
+          return `<a href="${u}"${isExternal ? ' target="_blank" rel="noopener noreferrer"' : ''}>${t}</a>`;
+        })
         // Bold
-        .replace(/\*\*([^*]+)\*\*/g, (_,t) => `<strong>${escLine(t)}</strong>`)
+        .replace(/\*\*([^*]+)\*\*/g, (_,t) => `<strong>${t}</strong>`)
         // Italic
-        .replace(/\*([^*]+)\*/g, (_,t) => `<em>${escLine(t)}</em>`);
+        .replace(/\*([^*]+)\*/g, (_,t) => `<em>${t}</em>`);
 
       const lines = md.split('\n');
       let html = '';
