@@ -1,12 +1,104 @@
 const express = require("express");
 const path = require("path");
 const fs = require("fs");
+const https = require("https");
 const multer = require("multer");
 
 const app = express();
 
 // ── Admin Auth ──
 const ADMIN_KEY = "CoastalAdmin2026!";
+
+// ── GitHub persistence (optional) ──
+// Render's filesystem is ephemeral: anything written to disk (posts.json,
+// uploaded images) disappears the next time the service redeploys. To make
+// admin-panel changes durable, every write is also committed in the
+// background to this repo's own GitHub tree, which becomes the real source
+// of truth. Requires a GITHUB_TOKEN env var (a GitHub token with "Contents:
+// Read and write" permission on this repo) to be set in Render → this
+// service → Environment. Without it, the site behaves exactly as before
+// (local-only, ephemeral) and logs a warning instead of failing.
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN || "";
+const GITHUB_OWNER = "cheyennearbuckle";
+const GITHUB_REPO = "oregon-coast-realtor";
+const GITHUB_BRANCH = "main";
+
+function githubRequest(method, apiPath, body) {
+  return new Promise((resolve, reject) => {
+    const data = body ? JSON.stringify(body) : null;
+    const options = {
+      hostname: "api.github.com",
+      path: apiPath,
+      method,
+      headers: {
+        "User-Agent": "oregon-coast-realtor-blog-sync",
+        "Authorization": `Bearer ${GITHUB_TOKEN}`,
+        "Accept": "application/vnd.github+json",
+        ...(data ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) } : {})
+      }
+    };
+    const req = https.request(options, (res) => {
+      let chunks = "";
+      res.on("data", (c) => (chunks += c));
+      res.on("end", () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          try { resolve(JSON.parse(chunks || "{}")); } catch (e) { resolve({}); }
+        } else {
+          reject(new Error(`GitHub API ${res.statusCode}: ${chunks}`));
+        }
+      });
+    });
+    req.on("error", reject);
+    if (data) req.write(data);
+    req.end();
+  });
+}
+
+// Best-effort: commit a file's current contents into the repo. Never throws —
+// failures (missing token, network issue, bad permissions) are logged only,
+// so the live admin workflow always keeps working even if syncing fails.
+async function commitFileToGitHub(repoPath, contentBuffer, message) {
+  if (!GITHUB_TOKEN) {
+    console.warn(`[github-sync] Skipped commit of ${repoPath} — GITHUB_TOKEN is not configured.`);
+    return;
+  }
+  try {
+    let sha;
+    try {
+      const existing = await githubRequest(
+        "GET",
+        `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${repoPath}?ref=${GITHUB_BRANCH}`
+      );
+      sha = existing.sha;
+    } catch (e) {
+      // File doesn't exist in the repo yet — that's fine, we'll create it.
+    }
+    await githubRequest(
+      "PUT",
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${repoPath}`,
+      {
+        message,
+        content: contentBuffer.toString("base64"),
+        branch: GITHUB_BRANCH,
+        ...(sha ? { sha } : {})
+      }
+    );
+    console.log(`[github-sync] Committed ${repoPath}`);
+  } catch (e) {
+    console.error(`[github-sync] Failed to commit ${repoPath}:`, e.message);
+  }
+}
+
+// Fire-and-forget sync of the full posts list into data/posts.json in the
+// repo, so the next redeploy starts from the latest admin-panel state
+// instead of whatever was last checked in by hand.
+function syncPostsToGitHub(posts) {
+  commitFileToGitHub(
+    "data/posts.json",
+    Buffer.from(JSON.stringify(posts, null, 2)),
+    "Sync blog posts from admin panel"
+  ).catch(() => {});
+}
 
 // ── Ensure directories exist ──
 const DATA_DIR = path.join(__dirname, "data");
@@ -90,6 +182,8 @@ function readPosts() {
 
 function writePosts(posts) {
   fs.writeFileSync(POSTS_FILE, JSON.stringify(posts, null, 2));
+  // Persist beyond this deploy — see GitHub persistence note above.
+  syncPostsToGitHub(posts);
 }
 
 // ── Blog API ──
@@ -191,6 +285,17 @@ app.post("/api/upload", requireAuth, upload.single("image"), (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
   const url = "/assets/uploads/" + req.file.filename;
   res.json({ url });
+
+  // Persist the uploaded image beyond this deploy — see GitHub persistence
+  // note above. Runs after the response so uploads stay fast in the admin UI.
+  fs.readFile(path.join(UPLOADS_DIR, req.file.filename), (err, buf) => {
+    if (err) return;
+    commitFileToGitHub(
+      "assets/uploads/" + req.file.filename,
+      buf,
+      "Add uploaded blog image " + req.file.filename
+    ).catch(() => {});
+  });
 });
 
 // ── Short alias redirects — friendly links (e.g. /blog2195Garfield or /2195Garfield) ──
