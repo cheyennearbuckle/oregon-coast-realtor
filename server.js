@@ -319,54 +319,100 @@ app.get("/:alias", (req, res, next) => {
   return next();
 });
 
-// ── Blog post SSR — inject canonical + OG meta per post for Google ──
+// ── Per-page meta for share previews (Facebook, Google Business, texts, LinkedIn) ──
+// index.html ships with homepage og:/twitter: tags. Social crawlers read the FIRST
+// og:url/og:title/og:image they find, so we must REPLACE those tags (not append),
+// otherwise every shared blog link previews — and resolves — as the homepage.
+const SITE = "https://oregoncoastrealtors.com";
+function escAttr(v) {
+  return String(v == null ? "" : v)
+    .replace(/&(?!(?:amp|lt|gt|quot|#\d+);)/g, "&amp;")
+    .replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function absImage(img) {
+  if (!img) return SITE + "/assets/hero-home.jpg";
+  if (/^https?:\/\//i.test(img)) return img;
+  return SITE + (img.startsWith("/") ? img : "/" + img);
+}
+function renderWithMeta(indexHtml, m) {
+  const title = escAttr(m.title), desc = escAttr(m.desc), url = escAttr(m.url);
+  const img = escAttr(m.image), alt = escAttr(m.imageAlt || m.title);
+  let html = indexHtml
+    // strip the homepage's social tags + canonical so only one set exists
+    .replace(/\s*<meta\s+property="og:[^"]*"[^>]*>/g, "")
+    .replace(/\s*<meta\s+name="twitter:[^"]*"[^>]*>/g, "")
+    .replace(/\s*<link\s+rel="canonical"[^>]*>/g, "")
+    .replace(/<title>[\s\S]*?<\/title>/, `<title>${title}</title>`)
+    .replace(/<meta name="description" content="[^"]*">/, `<meta name="description" content="${desc}">`);
+  const tags =
+    `  <link rel="canonical" href="${url}">\n` +
+    (m.noindex ? `  <meta name="robots" content="noindex, follow">\n` : "") +
+    `  <meta property="og:type" content="${m.type || "website"}">\n` +
+    `  <meta property="og:site_name" content="Cheyenne Sells Oregon">\n` +
+    `  <meta property="og:locale" content="en_US">\n` +
+    `  <meta property="og:url" content="${url}">\n` +
+    `  <meta property="og:title" content="${title}">\n` +
+    `  <meta property="og:description" content="${desc}">\n` +
+    `  <meta property="og:image" content="${img}">\n` +
+    `  <meta property="og:image:secure_url" content="${img}">\n` +
+    `  <meta property="og:image:alt" content="${alt}">\n` +
+    `  <meta name="twitter:card" content="summary_large_image">\n` +
+    `  <meta name="twitter:title" content="${title}">\n` +
+    `  <meta name="twitter:description" content="${desc}">\n` +
+    `  <meta name="twitter:image" content="${img}">\n`;
+  return html.replace("</head>", tags + "</head>");
+}
+
+// ── Blog listing page (/blog) — its own canonical + share preview ──
+app.get(["/blog", "/blog/"], (req, res) => {
+  const indexHtml = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(renderWithMeta(indexHtml, {
+    url: `${SITE}/blog`,
+    title: "Oregon Coast Real Estate Blog | Cheyenne Arbuckle, Coos Bay Realtor",
+    desc: "New listings, market updates and local guides for Coos Bay, North Bend, Bandon and the Southern Oregon Coast from Cheyenne Arbuckle, Pacific Properties.",
+    image: `${SITE}/assets/hero-home.jpg`,
+  }));
+});
+
+// ── Blog post SSR — inject canonical + OG meta per post for Google & social shares ──
 app.get("/blog/:slug", (req, res) => {
   const posts = readPosts();
-  const post = posts.find(p => p.slug === req.params.slug && p.status === "published");
+  const slug = String(req.params.slug || "").toLowerCase();
   const indexHtml = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+  let post = posts.find(p => p.status === "published" && String(p.slug).toLowerCase() === slug);
+
+  // Forgiving lookups so hand-typed / shortened links still work:
+  // /blog/<alias>  (e.g. /blog/2195Garfield or /blog/blog2195Garfield)
+  if (!post) {
+    const a = slug.replace(/^blog/, "");
+    post = posts.find(p => p.status === "published" && p.alias &&
+      (p.alias.toLowerCase() === slug || p.alias.toLowerCase() === a));
+  }
+  if (post && post.slug !== req.params.slug) {
+    return res.redirect(301, `/blog/${post.slug}`);
+  }
 
   if (!post) {
     // Slug not found — return 404 so Google stops indexing phantom URLs
-    return res.status(404).send(indexHtml.replace(
-      '<link rel="canonical" href="https://oregoncoastrealtors.com/">',
-      '<link rel="canonical" href="https://oregoncoastrealtors.com/">\n  <meta name="robots" content="noindex, follow">'
-    ));
+    res.status(404).setHeader("Content-Type", "text/html; charset=utf-8");
+    return res.send(renderWithMeta(indexHtml, {
+      url: `${SITE}/blog`, noindex: true,
+      title: "Post not found | Oregon Coast Realtor – Cheyenne Arbuckle",
+      desc: "This post may have moved. Browse the latest Southern Oregon Coast listings and guides from Cheyenne Arbuckle.",
+      image: `${SITE}/assets/hero-home.jpg`,
+    }));
   }
 
-  const url  = `https://oregoncoastrealtors.com/blog/${post.slug}`;
-  const title = `${post.title} | Oregon Coast Realtor – Cheyenne Arbuckle`;
-  const desc  = post.excerpt || "Oregon Coast real estate insights from Cheyenne Arbuckle, Pacific Properties.";
-  const img   = post.image ? `https://oregoncoastrealtors.com${post.image}` : "https://oregoncoastrealtors.com/assets/og-default.jpg";
-
-  const injected = indexHtml
-    .replace(
-      '<link rel="canonical" href="https://oregoncoastrealtors.com/">',
-      `<link rel="canonical" href="${url}">`
-    )
-    .replace(
-      /<title>.*?<\/title>/,
-      `<title>${title}</title>`
-    )
-    .replace(
-      /<meta name="description" content=".*?">/,
-      `<meta name="description" content="${desc}">`
-    )
-    // Open Graph
-    .replace(
-      '</head>',
-      `  <meta property="og:type" content="article">\n` +
-      `  <meta property="og:title" content="${title}">\n` +
-      `  <meta property="og:description" content="${desc}">\n` +
-      `  <meta property="og:url" content="${url}">\n` +
-      `  <meta property="og:image" content="${img}">\n` +
-      `  <meta name="twitter:card" content="summary_large_image">\n` +
-      `  <meta name="twitter:title" content="${title}">\n` +
-      `  <meta name="twitter:description" content="${desc}">\n` +
-      `</head>`
-    );
-
-  res.setHeader("Content-Type", "text/html");
-  res.send(injected);
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(renderWithMeta(indexHtml, {
+    type: "article",
+    url: `${SITE}/blog/${post.slug}`,
+    title: `${post.title} | Oregon Coast Realtor – Cheyenne Arbuckle`,
+    desc: post.excerpt || "Oregon Coast real estate insights from Cheyenne Arbuckle, Pacific Properties.",
+    image: absImage(post.image),
+    imageAlt: post.title,
+  }));
 });
 
 // ── SPA fallback — serve index.html for any unmatched route ──
