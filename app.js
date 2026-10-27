@@ -90,6 +90,17 @@
   window.addEventListener('hashchange', navigate);
   navigate();
 
+  // ── Phone & Email Click Tracking ──
+  document.addEventListener('click', (e) => {
+    const link = e.target.closest && e.target.closest('a[href^="tel:"], a[href^="mailto:"]');
+    if (!link || typeof window.gtag !== 'function') return;
+    const isPhone = link.getAttribute('href').startsWith('tel:');
+    gtag('event', isPhone ? 'phone_call_click' : 'email_click', {
+      link_url: link.getAttribute('href'),
+      form_location: (location.hash || '#home').replace('#', '') || 'home'
+    });
+  });
+
   // ── Form Submissions ──
   document.addEventListener('submit', async (e) => {
     const form = e.target;
@@ -109,6 +120,16 @@
         body: JSON.stringify(data)
       });
       const result = await res.json();
+
+      // Conversion tracking (GA4 + Google Ads)
+      if (res.ok && typeof window.gtag === 'function') {
+        const page = (location.hash || '#home').replace('#', '') || 'home';
+        if (form.dataset.endpoint === '/api/lead') {
+          gtag('event', 'generate_lead', { form_name: 'contact_form', form_location: page });
+        } else if (form.dataset.endpoint === '/api/newsletter') {
+          gtag('event', 'sign_up', { method: 'newsletter', form_location: page });
+        }
+      }
 
       const successEl = form.querySelector('.form-success');
       if (successEl) {
