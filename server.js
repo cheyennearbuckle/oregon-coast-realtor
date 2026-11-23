@@ -201,20 +201,25 @@ let giveawayState = readJSON(GIVEAWAY_SLOTS_FILE, { taken: {} });
 if (!giveawayState.taken) giveawayState.taken = {};
 let giveawaySignups = readJSON(GIVEAWAY_SIGNUPS_FILE, []);
 
-// On boot, merge in the latest committed copy from GitHub (public raw file),
-// in case it's newer than what this deploy shipped with.
-https.get(`https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${GITHUB_BRANCH}/data/giveaway-slots.json?t=${Date.now()}`, r => {
-  let body = ""; r.on("data", c => (body += c));
-  r.on("end", () => {
-    try {
-      const remote = JSON.parse(body);
-      if (remote && remote.taken) {
-        giveawayState.taken = { ...remote.taken, ...giveawayState.taken };
-        fs.writeFileSync(GIVEAWAY_SLOTS_FILE, JSON.stringify(giveawayState, null, 2));
-      }
-    } catch {}
-  });
-}).on("error", () => {});
+// On boot, merge in the latest committed copy from GitHub (uncached API read
+// when a token is set, public raw file otherwise), in case it's newer than
+// what this deploy shipped with.
+function mergeRemoteSlots(remote, authoritative) {
+  if (remote && remote.taken) {
+    giveawayState.taken = authoritative ? { ...remote.taken } : { ...giveawayState.taken, ...remote.taken };
+    fs.writeFileSync(GIVEAWAY_SLOTS_FILE, JSON.stringify(giveawayState, null, 2));
+  }
+}
+if (GITHUB_TOKEN) {
+  githubRequest("GET", `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/data/giveaway-slots.json?ref=${GITHUB_BRANCH}`)
+    .then(f => mergeRemoteSlots(JSON.parse(Buffer.from(f.content, "base64").toString("utf8")), true))
+    .catch(e => console.warn("[giveaway] remote slot load failed:", e.message));
+} else {
+  https.get(`https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${GITHUB_BRANCH}/data/giveaway-slots.json?t=${Date.now()}`, r => {
+    let body = ""; r.on("data", c => (body += c));
+    r.on("end", () => { try { mergeRemoteSlots(JSON.parse(body)); } catch {} });
+  }).on("error", () => {});
+}
 
 let giveawaySyncTimer = null;
 function saveGiveawayState(reason) {
@@ -222,7 +227,7 @@ function saveGiveawayState(reason) {
   // Debounce so a burst of bookings becomes one commit.
   clearTimeout(giveawaySyncTimer);
   giveawaySyncTimer = setTimeout(() => {
-    commitFileToGitHub("data/giveaway-slots.json", Buffer.from(JSON.stringify(giveawayState, null, 2)), `Giveaway: ${reason}`).catch(() => {});
+    commitFileToGitHub("data/giveaway-slots.json", Buffer.from(JSON.stringify(giveawayState, null, 2)), `Giveaway: ${reason} [skip render]`).catch(() => {});
   }, 3000);
 }
 
