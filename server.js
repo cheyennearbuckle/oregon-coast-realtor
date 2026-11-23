@@ -7,7 +7,9 @@ const multer = require("multer");
 const app = express();
 
 // ── Admin Auth ──
-const ADMIN_KEY = "CoastalAdmin2026!";
+// Set ADMIN_KEY in Render → Environment. Never hard-code it here (this repo is public).
+const ADMIN_KEY = process.env.ADMIN_KEY || "";
+if (!ADMIN_KEY) console.warn("[admin] ADMIN_KEY is not set — admin panel logins are disabled.");
 
 // ── GitHub persistence (optional) ──
 // Render's filesystem is ephemeral: anything written to disk (posts.json,
@@ -319,7 +321,7 @@ app.post("/api/giveaway/book", (req, res) => {
 
 // ── Admin API (same admin key as the blog admin) ──
 app.get("/api/giveaway/admin", (req, res) => {
-  if (req.headers["x-admin-key"] !== ADMIN_KEY) return res.status(401).json({ error: "Unauthorized" });
+  if (!ADMIN_KEY || req.headers["x-admin-key"] !== ADMIN_KEY) return res.status(401).json({ error: "Unauthorized" });
   res.json({
     slots: ALL_SLOTS.map(v => {
       const t = giveawayState.taken[v];
@@ -331,7 +333,7 @@ app.get("/api/giveaway/admin", (req, res) => {
   });
 });
 app.post("/api/giveaway/admin/slot", (req, res) => {
-  if (req.headers["x-admin-key"] !== ADMIN_KEY) return res.status(401).json({ error: "Unauthorized" });
+  if (!ADMIN_KEY || req.headers["x-admin-key"] !== ADMIN_KEY) return res.status(401).json({ error: "Unauthorized" });
   const { slot, action, note } = req.body;
   if (!ALL_SLOTS.includes(slot)) return res.status(400).json({ error: "Bad slot" });
   if (action === "block") giveawayState.taken[slot] = { type: "blocked", at: new Date().toISOString(), note: String(note || "").slice(0, 80) };
@@ -344,7 +346,7 @@ app.post("/api/giveaway/admin/slot", (req, res) => {
 // ── Auth middleware ──
 function requireAuth(req, res, next) {
   const key = req.headers["x-admin-key"];
-  if (key !== ADMIN_KEY) {
+  if (!ADMIN_KEY || key !== ADMIN_KEY) {
     return res.status(401).json({ error: "Unauthorized" });
   }
   next();
