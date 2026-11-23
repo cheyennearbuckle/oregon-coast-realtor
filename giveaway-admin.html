@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow"><title>Giveaway Sign-ups — Admin</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Work+Sans:wght@400;500;600&display=swap">
+<style>
+body{font-family:'Work Sans',sans-serif;background:#f5f2ec;color:#1a2a2e;margin:0;padding:24px}
+.w{max-width:760px;margin:0 auto}h1{font-family:'Instrument Serif',serif;font-weight:400;font-size:34px;margin:0 0 4px}
+.m{color:#5a6b6e;font-size:14px}.card{background:#faf8f4;border:1px solid #e3ddd0;border-radius:14px;padding:16px;margin-top:16px}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{text-align:left;padding:10px 6px;border-bottom:1px solid #e3ddd0}
+.b{border:0;border-radius:6px;padding:6px 12px;font:500 13px 'Work Sans';cursor:pointer;background:#1a5c5e;color:#f5f2ec}.b.o{background:#e8f0ef;color:#1a5c5e}
+.tag{font-size:12px;padding:2px 8px;border-radius:99px}.open{background:#e8f0ef;color:#1a5c5e}.booked{background:#d4a234;color:#1a2a2e}.blocked{background:#edeae3;color:#5a6b6e}
+input{height:36px;border:1px solid #e3ddd0;border-radius:6px;padding:0 10px;font:14px 'Work Sans'}
+</style></head><body><div class="w">
+<h1>Holiday Photo Giveaway — Sign-ups</h1><p class="m">Saturday, December 5th · <a href="/giveaway">View public page</a></p>
+<div class="card" id="login"><p class="m">Enter your website admin key.</p><input type="password" id="k" placeholder="Admin key"> <button class="b" id="go">Open</button></div>
+<div class="card" id="panel" style="display:none"><p class="m" id="sum"></p><table><thead><tr><th>Time</th><th>Status</th><th>Name / Email</th><th></th></tr></thead><tbody id="rows"></tbody></table></div>
+</div><script>
+var key=sessionStorage.getItem('gk')||'';
+function api(u,o){o=o||{};o.headers=Object.assign({'x-admin-key':key,'Content-Type':'application/json'},o.headers||{});return fetch(u,o).then(function(r){if(r.status===401)throw 0;return r.json()})}
+function load(){api('/api/giveaway/admin').then(function(d){
+  document.getElementById('login').style.display='none';document.getElementById('panel').style.display='block';
+  var b=d.slots.filter(function(s){return s.status==='booked'}).length,o=d.slots.filter(function(s){return s.status==='open'}).length;
+  document.getElementById('sum').textContent=b+' booked · '+o+' open · '+(d.slots.length-b-o)+' blocked'+(d.githubSync?'':' · Warning: GITHUB_TOKEN not set, slots may reset on restart')+(d.emailMode==='gmail'?'':' · Email via FormSubmit fallback');
+  var t=document.getElementById('rows');t.innerHTML='';
+  d.slots.forEach(function(s){var tr=document.createElement('tr');
+    tr.innerHTML='<td>'+s.label+'</td><td><span class="tag '+s.status+'">'+s.status+'</span></td><td>'+(s.name?s.name+'<br><span class="m">'+s.email+'</span>':(s.note?'<span class="m">'+s.note+'</span>':''))+'</td><td></td>';
+    var btn=document.createElement('button');btn.className='b'+(s.status==='open'?'':' o');btn.textContent=s.status==='open'?'Block':'Reopen';
+    btn.onclick=function(){if(s.status==='booked'&&!confirm('Reopen '+s.label+'? '+s.name+' will lose this slot.'))return;
+      var note=s.status==='open'?(prompt('Optional note (e.g. who it is for):')||''):'';
+      api('/api/giveaway/admin/slot',{method:'POST',body:JSON.stringify({slot:s.value,action:s.status==='open'?'block':'open',note:note})}).then(load)};
+    tr.lastChild.appendChild(btn);t.appendChild(tr)});
+}).catch(function(){sessionStorage.removeItem('gk');document.getElementById('login').style.display='block'})}
+document.getElementById('go').onclick=function(){key=document.getElementById('k').value;sessionStorage.setItem('gk',key);load()};
+if(key)load();
+</script></body></html>

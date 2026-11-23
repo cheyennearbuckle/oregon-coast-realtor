@@ -162,6 +162,180 @@ app.post("/api/newsletter", (req, res) => {
   res.json({ success: true, message: "You're on the list! Watch your inbox for Oregon Coast market updates." });
 });
 
+// ══════════════════════════════════════════════════════════════════════
+// ── Holiday Photo Giveaway (/giveaway) — Dec 5th, 20-minute sessions ──
+// ══════════════════════════════════════════════════════════════════════
+// • Slots are locked the instant someone books (checked + reserved
+//   synchronously, so two people can never grab the same time).
+// • Taken/blocked slot TIMES (no names/emails) are saved to
+//   data/giveaway-slots.json and committed to GitHub when GITHUB_TOKEN is set,
+//   so they survive Render restarts/redeploys.
+// • Each sign-up is emailed to Cheyenne (Gmail SMTP via GMAIL_USER +
+//   GMAIL_APP_PASSWORD env vars; FormSubmit fallback if those aren't set).
+const GIVEAWAY = {
+  dateISO: "2026-12-05",
+  dateLabel: "Saturday, December 5th",
+  blocks: [[9 * 60, 12 * 60 + 30], [13 * 60, 15 * 60]], // 9:00–12:30, lunch, 1:00–3:00
+  lunchStart: 12 * 60 + 30,
+  lunchEnd: 13 * 60,
+  length: 20,
+};
+const NOTIFY_EMAIL = process.env.NOTIFY_EMAIL || "cheyenneasellsoregonrealestate@gmail.com, Cheyenne@pacificpropertiesteam.com";
+const GIVEAWAY_SLOTS_FILE = path.join(DATA_DIR, "giveaway-slots.json");     // committed (times only)
+const GIVEAWAY_SIGNUPS_FILE = path.join(DATA_DIR, "giveaway-signups.json"); // local only (private)
+
+const pad2 = n => String(n).padStart(2, "0");
+const toHHMM = m => `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
+const toLabel = m => { const h = Math.floor(m / 60), mm = m % 60; return `${h % 12 === 0 ? 12 : h % 12}:${pad2(mm)} ${h < 12 ? "AM" : "PM"}`; };
+const fromHHMM = s => { const [h, m] = String(s).split(":").map(Number); return h * 60 + m; };
+function giveawaySlots() {
+  const out = [];
+  for (const [start, end] of GIVEAWAY.blocks)
+    for (let m = start; m + GIVEAWAY.length <= end; m += GIVEAWAY.length) out.push(toHHMM(m));
+  return out;
+}
+const ALL_SLOTS = giveawaySlots();
+
+function readJSON(file, fallback) { try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return fallback; } }
+let giveawayState = readJSON(GIVEAWAY_SLOTS_FILE, { taken: {} });
+if (!giveawayState.taken) giveawayState.taken = {};
+let giveawaySignups = readJSON(GIVEAWAY_SIGNUPS_FILE, []);
+
+// On boot, merge in the latest committed copy from GitHub (public raw file),
+// in case it's newer than what this deploy shipped with.
+https.get(`https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${GITHUB_BRANCH}/data/giveaway-slots.json?t=${Date.now()}`, r => {
+  let body = ""; r.on("data", c => (body += c));
+  r.on("end", () => {
+    try {
+      const remote = JSON.parse(body);
+      if (remote && remote.taken) {
+        giveawayState.taken = { ...remote.taken, ...giveawayState.taken };
+        fs.writeFileSync(GIVEAWAY_SLOTS_FILE, JSON.stringify(giveawayState, null, 2));
+      }
+    } catch {}
+  });
+}).on("error", () => {});
+
+let giveawaySyncTimer = null;
+function saveGiveawayState(reason) {
+  fs.writeFileSync(GIVEAWAY_SLOTS_FILE, JSON.stringify(giveawayState, null, 2));
+  // Debounce so a burst of bookings becomes one commit.
+  clearTimeout(giveawaySyncTimer);
+  giveawaySyncTimer = setTimeout(() => {
+    commitFileToGitHub("data/giveaway-slots.json", Buffer.from(JSON.stringify(giveawayState, null, 2)), `Giveaway: ${reason}`).catch(() => {});
+  }, 3000);
+}
+
+// ── Email ──
+let mailer = null;
+if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
+  try {
+    const nodemailer = require("nodemailer");
+    mailer = nodemailer.createTransport({ service: "gmail", auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD } });
+  } catch (e) { console.error("[giveaway] nodemailer unavailable:", e.message); }
+}
+function icsFor(slot, title, desc) {
+  // Dec 5 is PST (UTC-8)
+  const start = fromHHMM(slot) + 8 * 60, end = start + GIVEAWAY.length;
+  const d = GIVEAWAY.dateISO.replace(/-/g, "");
+  const t = m => `${d}T${pad2(Math.floor(m / 60))}${pad2(m % 60)}00Z`;
+  return ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Oregon Coast Realtor//Giveaway//EN", "METHOD:PUBLISH", "BEGIN:VEVENT",
+    `UID:giveaway-${d}-${slot.replace(":", "")}@oregoncoastrealtors.com`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, "").slice(0, 15)}Z`,
+    `DTSTART:${t(start)}`, `DTEND:${t(end)}`, `SUMMARY:${title}`, `DESCRIPTION:${desc}`, "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+}
+function formSubmitFallback(subject, text, replyTo) {
+  const to = NOTIFY_EMAIL.split(",")[0].trim();
+  const body = JSON.stringify({ _subject: subject, _template: "table", _captcha: "false", _replyto: replyTo, message: text });
+  const req = https.request({ hostname: "formsubmit.co", path: `/ajax/${encodeURIComponent(to)}`, method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json", "Content-Length": Buffer.byteLength(body),
+      Referer: "https://oregoncoastrealtors.com/giveaway", Origin: "https://oregoncoastrealtors.com" } },
+    r => { let b = ""; r.on("data", c => (b += c)); r.on("end", () => console.log("[giveaway] FormSubmit:", r.statusCode, b.slice(0, 200))); });
+  req.on("error", e => console.error("[giveaway] FormSubmit failed:", e.message));
+  req.end(body);
+}
+async function sendGiveawayEmails(signup) {
+  const label = toLabel(fromHHMM(signup.slot));
+  const booked = Object.values(giveawayState.taken).filter(t => t.type === "booked").length;
+  const subject = `Giveaway sign-up: ${signup.firstName} — Dec 5 at ${label}`;
+  const text = `New Holiday Photo Giveaway sign-up\n\nName: ${signup.firstName}\nEmail: ${signup.email}\nTime: ${GIVEAWAY.dateLabel} at ${label} (20 min)\nSigned up: ${new Date(signup.at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })}\n\nSlots booked so far: ${booked} of ${ALL_SLOTS.length}\nView all sign-ups: https://oregoncoastrealtors.com/giveaway/admin`;
+  console.log("\n===== GIVEAWAY SIGN-UP =====\n" + text + "\n============================\n");
+  if (!mailer) return formSubmitFallback(subject, text, signup.email);
+  try {
+    await mailer.sendMail({ from: `"Oregon Coast Realtor Website" <${process.env.GMAIL_USER}>`, to: NOTIFY_EMAIL, replyTo: signup.email, subject, text,
+      icalEvent: { filename: "giveaway-session.ics", method: "PUBLISH", content: icsFor(signup.slot, `Giveaway photo session: ${signup.firstName}`, `${signup.firstName} (${signup.email})`) } });
+    // Confirmation to the guest
+    await mailer.sendMail({ from: `"Cheyenne Arbuckle, Oregon Coast Realtor" <${process.env.GMAIL_USER}>`, to: signup.email, replyTo: NOTIFY_EMAIL.split(",")[0].trim(),
+      subject: `You're booked: Holiday photo session Dec 5 at ${label}`,
+      text: `Hi ${signup.firstName},\n\nYou're entered! Your 20-minute holiday photo session with Rocky Lee Photography is reserved for ${GIVEAWAY.dateLabel} at ${label}.\n\nOne family photo from your session is paid for by me, and you're welcome to purchase more photos at your session. If you need to change your time, just reply to this email.\n\nHappy holidays!\nCheyenne Arbuckle\nOregon Coast Realtor · Pacific Properties Team\nhttps://oregoncoastrealtors.com`,
+      icalEvent: { filename: "holiday-photo-session.ics", method: "PUBLISH", content: icsFor(signup.slot, "Holiday photo session — Rocky Lee Photography", "Your 20-minute holiday photo giveaway session with Cheyenne Arbuckle, Oregon Coast Realtor.") } });
+  } catch (e) {
+    console.error("[giveaway] Gmail send failed, using fallback:", e.message);
+    formSubmitFallback(subject, text, signup.email);
+  }
+}
+
+// ── Page routes ──
+app.get(["/giveaway", "/giveaway/"], (req, res) => res.sendFile(path.join(__dirname, "giveaway.html")));
+app.get(["/giveaway/admin", "/giveaway/admin/"], (req, res) => res.sendFile(path.join(__dirname, "giveaway-admin.html")));
+
+// ── Public API ──
+app.get("/api/giveaway/slots", (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json({
+    date: GIVEAWAY.dateISO,
+    slots: ALL_SLOTS.map(v => ({ value: v, label: toLabel(fromHHMM(v)) })),
+    taken: Object.keys(giveawayState.taken),
+    lunchAfter: toHHMM(GIVEAWAY.lunchEnd),
+    lunchLabel: `${toLabel(GIVEAWAY.lunchStart)} – ${toLabel(GIVEAWAY.lunchEnd)}`,
+  });
+});
+
+app.post("/api/giveaway/book", (req, res) => {
+  const firstName = String(req.body.firstName || "").trim().slice(0, 60);
+  const email = String(req.body.email || "").trim().slice(0, 255);
+  const slot = String(req.body.slot || "");
+  if (!firstName) return res.json({ ok: false, message: "Please enter your first name." });
+  if (!/^\S+@\S+\.\S+$/.test(email)) return res.json({ ok: false, message: "Please enter a valid email address." });
+  if (!ALL_SLOTS.includes(slot)) return res.json({ ok: false, message: "Please pick a time slot." });
+  if (giveawaySignups.some(s => s.email.toLowerCase() === email.toLowerCase() && giveawayState.taken[s.slot]))
+    return res.json({ ok: false, message: "This email already has a session booked. Reply to your confirmation email if you need to change it." });
+  if (giveawayState.taken[slot]) return res.json({ ok: false, message: "Sorry — that time was just taken. Please pick another." });
+
+  // Reserve immediately (synchronous — no double booking possible)
+  const at = new Date().toISOString();
+  giveawayState.taken[slot] = { type: "booked", at };
+  const signup = { firstName, email, slot, at };
+  giveawaySignups.push(signup);
+  try { fs.writeFileSync(GIVEAWAY_SIGNUPS_FILE, JSON.stringify(giveawaySignups, null, 2)); } catch {}
+  saveGiveawayState(`booked ${slot}`);
+  sendGiveawayEmails(signup).catch(e => console.error("[giveaway] email error:", e.message));
+  res.json({ ok: true, slot, label: toLabel(fromHHMM(slot)) });
+});
+
+// ── Admin API (same admin key as the blog admin) ──
+app.get("/api/giveaway/admin", (req, res) => {
+  if (req.headers["x-admin-key"] !== ADMIN_KEY) return res.status(401).json({ error: "Unauthorized" });
+  res.json({
+    slots: ALL_SLOTS.map(v => {
+      const t = giveawayState.taken[v];
+      const su = [...giveawaySignups].reverse().find(s => s.slot === v);
+      return { value: v, label: toLabel(fromHHMM(v)), status: t ? t.type : "open", name: t && t.type === "booked" && su ? su.firstName : "", email: t && t.type === "booked" && su ? su.email : "", note: t && t.note || "" };
+    }),
+    emailMode: mailer ? "gmail" : "formsubmit",
+    githubSync: !!GITHUB_TOKEN,
+  });
+});
+app.post("/api/giveaway/admin/slot", (req, res) => {
+  if (req.headers["x-admin-key"] !== ADMIN_KEY) return res.status(401).json({ error: "Unauthorized" });
+  const { slot, action, note } = req.body;
+  if (!ALL_SLOTS.includes(slot)) return res.status(400).json({ error: "Bad slot" });
+  if (action === "block") giveawayState.taken[slot] = { type: "blocked", at: new Date().toISOString(), note: String(note || "").slice(0, 80) };
+  else if (action === "open") delete giveawayState.taken[slot];
+  else return res.status(400).json({ error: "Bad action" });
+  saveGiveawayState(`${action} ${slot}`);
+  res.json({ ok: true });
+});
+
 // ── Auth middleware ──
 function requireAuth(req, res, next) {
   const key = req.headers["x-admin-key"];
