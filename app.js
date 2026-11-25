@@ -120,6 +120,12 @@
         body: JSON.stringify(data)
       });
       const result = await res.json();
+      if (!res.ok || result.success === false) {
+        btn.textContent = result.message || 'Error — Try Again';
+        btn.disabled = false;
+        setTimeout(() => { btn.textContent = origText; }, 4000);
+        return;
+      }
 
       // Conversion tracking (GA4 + Google Ads)
       if (res.ok && typeof window.gtag === 'function') {

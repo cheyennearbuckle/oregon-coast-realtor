@@ -146,21 +146,47 @@ app.use("/assets/uploads", express.static(UPLOADS_DIR));
 // ── Lead capture endpoint ──
 const LEAD_EMAIL = "Cheyenne@pacificpropertiesteam.com";
 
+// Field labels for lead emails (anything else is included as-is)
+const LEAD_LABELS = { name: "Name", email: "Email", phone: "Phone", subject: "Subject", type: "Type", interest: "I'm interested in",
+  address: "Property address", budget: "Budget", timeline: "Timeline", preferred_area: "Preferred area", message: "Message" };
+const clean = v => String(v == null ? "" : v).replace(/\r/g, "").trim().slice(0, 4000);
+const isEmail = v => /^\S+@\S+\.\S+$/.test(v);
+const pageFrom = req => { try { return new URL(req.get("referer") || "").pathname + (new URL(req.get("referer")).hash || ""); } catch { return ""; } };
+
+// Simple per-IP throttle so bots can't flood your inbox
+const formHits = new Map();
+function throttled(req) {
+  const ip = (req.headers["x-forwarded-for"] || req.ip || "").split(",")[0].trim();
+  const now = Date.now(), list = (formHits.get(ip) || []).filter(t => now - t < 10 * 60 * 1000);
+  list.push(now); formHits.set(ip, list);
+  return list.length > 8;
+}
+
 app.post("/api/lead", (req, res) => {
-  const { name, email, phone, message, type, address, subject, _to } = req.body;
-  const lead = { name, email, phone, type: type || subject, message, address, sentTo: _to || LEAD_EMAIL, timestamp: new Date().toISOString() };
-  console.log("\n===== NEW LEAD =====");
-  console.log(JSON.stringify(lead, null, 2));
-  console.log("===================\n");
+  const b = req.body || {};
+  if (b.website || b.company_url) return res.json({ success: true, message: "Thank you! Cheyenne will be in touch within one business day." }); // honeypot
+  if (throttled(req)) return res.status(429).json({ success: false, message: "Too many messages — please call or email Cheyenne directly." });
+  const fields = {};
+  for (const [k, v] of Object.entries(b)) { if (k.startsWith("_")) continue; const c = clean(v); if (c) fields[k] = c; }
+  const name = fields.name || "Website visitor", email = fields.email || "";
+  const what = fields.interest || fields.subject || fields.type || "Contact form";
+  const lines = Object.entries(fields).map(([k, v]) => `${LEAD_LABELS[k] || k}: ${v}`);
+  const submitted = new Date().toLocaleString("en-US", { timeZone: "America/Los_Angeles" });
+  const text = `New lead from oregoncoastrealtors.com\n\n${lines.join("\n")}\n\nForm page: ${pageFrom(req) || "/"}\nSubmitted: ${submitted} (Pacific)\n\nReply to this email to respond directly to ${name}.`;
+  console.log("\n===== NEW LEAD =====\n" + text + "\n===================\n");
+  sendSiteEmail(`New website lead: ${name} — ${what}`, text, isEmail(email) ? email : undefined).catch(() => {});
   res.json({ success: true, message: "Thank you! Cheyenne will be in touch within one business day." });
 });
 
 // ── Newsletter signup ──
 app.post("/api/newsletter", (req, res) => {
-  const { email, _to } = req.body;
-  console.log("\n===== NEWSLETTER SIGNUP =====");
-  console.log("Email:", email, "| Route to:", _to || LEAD_EMAIL);
-  console.log("=============================\n");
+  const email = clean((req.body || {}).email);
+  if (!isEmail(email)) return res.status(400).json({ success: false, message: "Please enter a valid email address." });
+  if (throttled(req)) return res.status(429).json({ success: false, message: "Too many requests — please try again later." });
+  const submitted = new Date().toLocaleString("en-US", { timeZone: "America/Los_Angeles" });
+  const text = `New newsletter signup from oregoncoastrealtors.com\n\nEmail: ${email}\nForm page: ${pageFrom(req) || "/"}\nSigned up: ${submitted} (Pacific)\n\nAdd them to your South Coast Home Report / market update list.`;
+  console.log("\n===== NEWSLETTER SIGNUP =====\n" + text + "\n=============================\n");
+  sendSiteEmail(`New newsletter signup: ${email}`, text, email).catch(() => {});
   res.json({ success: true, message: "You're on the list! Watch your inbox for Oregon Coast market updates." });
 });
 
@@ -259,6 +285,16 @@ function formSubmitFallback(subject, text, replyTo) {
     r => { let b = ""; r.on("data", c => (b += c)); r.on("end", () => console.log("[giveaway] FormSubmit:", r.statusCode, b.slice(0, 200))); });
   req.on("error", e => console.error("[giveaway] FormSubmit failed:", e.message));
   req.end(body);
+}
+// Shared sender for website forms (contact + newsletter)
+async function sendSiteEmail(subject, text, replyTo) {
+  if (!mailer) return formSubmitFallback(subject, text, replyTo);
+  try {
+    await mailer.sendMail({ from: `"Oregon Coast Realtor Website" <${process.env.GMAIL_USER}>`, to: NOTIFY_EMAIL, ...(replyTo ? { replyTo } : {}), subject, text });
+  } catch (e) {
+    console.error("[forms] Gmail send failed, using fallback:", e.message);
+    formSubmitFallback(subject, text, replyTo);
+  }
 }
 async function sendGiveawayEmails(signup) {
   const label = toLabel(fromHHMM(signup.slot));
